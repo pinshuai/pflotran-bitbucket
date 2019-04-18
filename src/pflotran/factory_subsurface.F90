@@ -706,6 +706,7 @@ subroutine SubsurfaceSetFlowMode(pm_flow,option)
   use PM_TOWG_class
   use PM_TOWG_Aux_module
   use PM_Richards_TS_class
+  use PM_THS_class
 
   implicit none
 
@@ -757,6 +758,21 @@ subroutine SubsurfaceSetFlowMode(pm_flow,option)
       option%capillary_pressure_id = 4
       option%vapor_pressure_id = 5
       option%saturation_pressure_id = 6
+
+      option%water_id = 1
+      option%air_id = 2
+      option%energy_id = 3
+
+      option%nflowdof = 3
+      option%nflowspec = 2
+      option%use_isothermal = PETSC_FALSE
+    class is (pm_ths_type)
+      option%iflowmode = THS_MODE
+      option%nphase = 1
+      option%liquid_phase = 1
+      
+      option%air_pressure_id = 3
+      option%capillary_pressure_id = 4
 
       option%water_id = 1
       option%air_id = 2

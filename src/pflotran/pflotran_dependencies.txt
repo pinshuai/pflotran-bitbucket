@@ -568,6 +568,11 @@ pm_th.o : communicator_base.o communicator_structured.o \
           input_aux.o option.o patch.o pflotran_constants.o pm_base.o \
           pm_subsurface_flow.o realization_subsurface.o saturation_function.o \
           string.o th.o th_aux.o utility.o
+pm_ths.o : checkpoint.o convergence.o discretization.o field.o global.o \
+           global_aux.o grid.o input_aux.o material_aux.o option.o patch.o \
+           pflotran_constants.o pm_base.o pm_subsurface_flow.o \
+           realization_base.o realization_subsurface.o string.o ths.o \
+           ths_aux.o ths_common.o upwind_direction.o variables.o
 pm_toil_ims.o : auxvars_toil_ims.o checkpoint.o field.o global.o global_aux.o \
                 grid.o input_aux.o material.o material_aux.o option.o patch.o \
                 pflotran_constants.o pm_base.o pm_subsurface_flow.o \
@@ -929,6 +934,14 @@ th.o : condition.o connection.o coupler.o debug.o discretization.o eos_water.o \
        utility.o variables.o
 th_aux.o : eos_water.o global_aux.o material_aux.o option.o \
            pflotran_constants.o saturation_function.o
+ths.o : connection.o coupler.o debug.o discretization.o eos_water.o field.o \
+        fluid.o global_aux.o grid.o material.o material_aux.o option.o \
+        output_aux.o patch.o pflotran_constants.o realization_subsurface.o \
+        saturation_function.o ths_aux.o ths_common.o upwind_direction.o \
+        variables.o
+ths_aux.o : option.o pflotran_constants.o
+ths_common.o : global_aux.o material_aux.o option.o pflotran_constants.o \
+               ths_aux.o upwind_direction.o
 time_storage.o : option.o pflotran_constants.o
 timestepper_BE.o : checkpoint.o convergence.o hdf5_aux.o input_aux.o option.o \
                    output.o output_ekg.o pflotran_constants.o pm_base.o \
