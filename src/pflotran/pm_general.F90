@@ -599,6 +599,10 @@ subroutine PMGeneralUpdateTimestep(this,dt,dt_min,dt_max,iacceleration, &
       string = 'Saturation'
       value = this%max_saturation_change
       governor_value = this%saturation_change_governor
+    else if (num_newton_iterations >= iacceleration) then
+      string = 'Timestepper iaccel'
+      value = num_newton_iterations
+      governor_value = iacceleration
     else
       string = 'Unknown'
       value = -999.d0
