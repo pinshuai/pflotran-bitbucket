@@ -936,6 +936,13 @@ subroutine OutputVariableRead(input,option,output_variable_list)
                                      OUTPUT_SATURATION,units, &
                                      ICE_SATURATION)
 
+      case ('HYDRATE_SATURATION')
+        name = 'Hydrate Saturation'
+        units = ''
+        call OutputVariableAddToList(output_variable_list,name, &
+                                     OUTPUT_SATURATION,units, &
+                                     HYDRATE_SATURATION)
+
       case ('LIQUID_MOLE_FRACTIONS')
         name = 'X_g^l'
         units = ''
@@ -1205,7 +1212,7 @@ subroutine Output(realization_base,snapshot_plot_flag,observation_plot_flag, &
   ! 
 
   use Realization_Base_class, only : realization_base_type
-  use Option_module, only : OptionCheckTouch, option_type, printMsg, printErrMsg
+  use Option_module
   
   implicit none
   
@@ -2298,7 +2305,7 @@ subroutine OutputAvegVars(realization_base)
   ! 
 
   use Realization_Base_class, only : realization_base_type
-  use Option_module, only : OptionCheckTouch, option_type, printMsg
+  use Option_module
   use Output_Aux_module
   use Output_Common_module, only : OutputGetVariableArray  
   use Field_module
