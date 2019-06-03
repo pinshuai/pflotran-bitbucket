@@ -1811,7 +1811,7 @@ subroutine EOSGasHenry_air(T,Psat,Hc,calculate_derivative, &
     TK = T+273.15D0
     Tr = TK/Tcw
     tau = 1.D0-Tr
-    if ( tau < 0.d0 ) then
+    if ( TK > Tcw .or. TK < 0.0d0 ) then
       ierr = EOS_GAS_TEMP_BOUND_EXCEEDED
     end if
     !tmp = a/Tr + b * tau**0.355d0/Tr + c * (Tr**(-0.41d0)) * exp(tau)
