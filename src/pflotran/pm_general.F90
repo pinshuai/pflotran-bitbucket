@@ -1249,6 +1249,22 @@ subroutine PMGeneralCheckConvergence(this,snes,it,xnorm,unorm,fnorm, &
   field => this%realization%field
   grid => patch%grid
   global_auxvars => patch%aux%Global%auxvars
+
+  if (general_high_temp_ts_cut) then
+    general_high_temp_ts_cut = PETSC_FALSE
+    string = '    Exceeded General Mode EOS max temperature'
+    call OptionPrint(string,option)
+    option%convergence = CONVERGENCE_CUT_TIMESTEP
+    call PMSubsurfaceFlowCheckConvergence(this,snes,it,xnorm,unorm,fnorm, &
+                                          reason,ierr)
+    if (this%check_post_convergence) then
+      !RESET ALL FLAGS AND ZERO ALL THE CELL ID'S
+      this%converged_flag(:,:,:) = PETSC_TRUE
+      this%converged_real(:,:,:) = 0.d0
+      this%converged_cell(:,:,:) = 0
+    endif
+    return
+  endif
   
   if (this%check_post_convergence) then
     call VecGetArrayReadF90(field%flow_r,r_p,ierr);CHKERRQ(ierr)

@@ -1339,7 +1339,11 @@ subroutine GeneralResidual(snes,xx,r,realization,ierr)
   call DiscretizationGlobalToLocal(discretization,xx,field%flow_xx_loc,NFLOWDOF)
   
                                              ! do update state
+  general_high_temp_ts_cut = PETSC_FALSE
   call GeneralUpdateAuxVars(realization,PETSC_TRUE)
+  if (general_high_temp_ts_cut) then
+    call VecSet(r,1.d20,ierr); CHKERRQ(ierr)
+  endif
 
 ! for debugging a single grid cell
 !  i = 6

@@ -88,6 +88,7 @@ module General_Aux_module
   PetscInt, public :: general_2ph_energy_dof = GENERAL_TEMPERATURE_INDEX
   PetscBool, public :: general_isothermal = PETSC_FALSE
   PetscBool, public :: general_no_air = PETSC_FALSE
+  PetscBool, public :: general_high_temp_ts_cut = PETSC_FALSE
   
   type, public :: general_auxvar_type
     PetscInt :: istate_store(2) ! 1 = previous timestep; 2 = previous iteration
@@ -630,6 +631,7 @@ subroutine GeneralAuxVarCompute(x,gen_auxvar,global_auxvar,material_auxvar, &
                           gen_auxvar%d%psat_p,gen_auxvar%d%psat_T, &
                           K_H_tilde,gen_auxvar%d%Hc_p,gen_auxvar%d%Hc_T,ierr)
         if (ierr /= 0) then
+          general_high_temp_ts_cut = PETSC_TRUE
           call GeneralEOSGasError(natural_id,ierr,gen_auxvar,option)
         endif
         gen_auxvar%d%Hc = K_H_tilde
@@ -640,6 +642,7 @@ subroutine GeneralAuxVarCompute(x,gen_auxvar,global_auxvar,material_auxvar, &
       !     that K_H is truly K_H_tilde (i.e. p_g * K_H).
         call EOSGasHenry(gen_auxvar%temp,gen_auxvar%pres(spid),K_H_tilde,ierr)
         if (ierr /= 0) then
+          general_high_temp_ts_cut = PETSC_TRUE
           call GeneralEOSGasError(natural_id,ierr,gen_auxvar,option)
        endif
     endif
@@ -697,6 +700,7 @@ subroutine GeneralAuxVarCompute(x,gen_auxvar,global_auxvar,material_auxvar, &
                           gen_auxvar%d%psat_p,gen_auxvar%d%psat_T, &
                           K_H_tilde,gen_auxvar%d%Hc_p,gen_auxvar%d%Hc_T,ierr)
         if (ierr /= 0) then
+          general_high_temp_ts_cut = PETSC_TRUE
           call GeneralEOSGasError(natural_id,ierr,gen_auxvar,option)
         endif
         gen_auxvar%d%Hc = K_H_tilde
@@ -705,6 +709,7 @@ subroutine GeneralAuxVarCompute(x,gen_auxvar,global_auxvar,material_auxvar, &
                                         gen_auxvar%pres(spid),ierr)
         call EOSGasHenry(gen_auxvar%temp,gen_auxvar%pres(spid),K_H_tilde,ierr)
         if (ierr /= 0) then
+          general_high_temp_ts_cut = PETSC_TRUE
           call GeneralEOSGasError(natural_id,ierr,gen_auxvar,option)
         endif
       endif
@@ -770,6 +775,7 @@ subroutine GeneralAuxVarCompute(x,gen_auxvar,global_auxvar,material_auxvar, &
                            gen_auxvar%d%psat_p,gen_auxvar%d%psat_T, &
                            K_H_tilde,gen_auxvar%d%Hc_p,gen_auxvar%d%Hc_T,ierr)
           if (ierr /= 0) then
+            general_high_temp_ts_cut = PETSC_TRUE
             call GeneralEOSGasError(natural_id,ierr,gen_auxvar,option)
           endif
           gen_auxvar%d%Hc = K_H_tilde
@@ -778,6 +784,7 @@ subroutine GeneralAuxVarCompute(x,gen_auxvar,global_auxvar,material_auxvar, &
                                           gen_auxvar%pres(spid),ierr)
           call EOSGasHenry(gen_auxvar%temp,gen_auxvar%pres(spid),K_H_tilde,ierr)
           if (ierr /= 0) then
+            general_high_temp_ts_cut = PETSC_TRUE
             call GeneralEOSGasError(natural_id,ierr,gen_auxvar,option)
           endif
         endif
@@ -1285,7 +1292,8 @@ subroutine GeneralEOSGasError(natural_id,ierr,gen_auxvar,option)
     option%io_buffer = 'Temperature at cell ID ' // trim(StringWrite(natural_id)) // &
                                ' exceeds the equation of state temperature bound with ' // &
                                trim(StringWrite(gen_auxvar%temp)) // ' [C].'
-    call printErrMsgByRank(option)         
+!    call printErrMsgByRank(option)         
+    call printMsgByRank(option)         
   endif
 
   
