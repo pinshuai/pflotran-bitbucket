@@ -1568,8 +1568,8 @@ subroutine GeneralAuxVarPerturb(gen_auxvar,global_auxvar, &
 
   PetscReal :: tempreal
 !#define LEGACY_PERTURBATION
-#define HEEHO_PERTURBATION
-#define HP_HARMONIC
+!#define HEEHO_PERTURBATION
+!#define HP_HARMONIC
 
 #ifdef HEEHO_PERTURBATION
   PetscReal, parameter :: perturbation_tolerance = 1.d-8
