@@ -1341,7 +1341,10 @@ subroutine GeneralResidual(snes,xx,r,realization,ierr)
                                              ! do update state
   general_high_temp_ts_cut = PETSC_FALSE
   call GeneralUpdateAuxVars(realization,PETSC_TRUE)
-
+  if (general_high_temp_ts_cut) then
+    call VecSet(r,1.d20,ierr); CHKERRQ(ierr)
+    return
+  endif
 ! for debugging a single grid cell
 !  i = 6
 !  call GeneralOutputAuxVars(gen_auxvars(0,i),global_auxvars(i),i,'genaux', &
@@ -1633,9 +1636,6 @@ subroutine GeneralResidual(snes,xx,r,realization,ierr)
     call VecRestoreArrayF90(r, r_p, ierr);CHKERRQ(ierr)
   endif  
 
-  if (general_high_temp_ts_cut) then
-    call VecSet(r,1.d20,ierr); CHKERRQ(ierr)
-  endif
 
   if (realization%debug%vecview_residual) then
     call DebugWriteFilename(realization%debug,string,'Gresidual','', &
