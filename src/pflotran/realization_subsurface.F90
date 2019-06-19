@@ -20,10 +20,9 @@ module Realization_Subsurface_class
   use Field_module
   use Debug_module
   use Output_Aux_module
-  
-  use Reaction_Aux_module
-  
   use Patch_module
+  use Reaction_Aux_module
+  use NW_Transport_Aux_module
   
   use PFLOTRAN_Constants_module
 
@@ -285,7 +284,8 @@ subroutine RealizationCreateDiscretization(realization)
     call DiscretizationCreateVector(discretization,NFLOWDOF,field%flow_xx_loc, &
                                     LOCAL,option)
 
-    if (option%iflowmode == RICHARDS_TS_MODE) then
+    if ((option%iflowmode == RICHARDS_TS_MODE) .or. &
+        (option%iflowmode == TH_TS_MODE)) then
       call DiscretizationCreateVector(discretization,NFLOWDOF,field%flow_xxdot, &
                                       GLOBAL,option)
 
@@ -313,8 +313,13 @@ subroutine RealizationCreateDiscretization(realization)
       ! ndof degrees of freedom, local
       call DiscretizationCreateVector(discretization,NTRANDOF,field%tran_xx_loc, &
                                       LOCAL,option)
-                                      
-      if (realization%reaction%use_log_formulation) then
+      
+      ! jenn:todo Check that realization%reaction is associated before trying to 
+      ! access it. This is in general and not specific to below code.
+      if ( (associated(realization%reaction) .and. &
+           realization%reaction%use_log_formulation) .or. &
+           (associated(realization%nw_trans) .and. &
+           realization%nw_trans%use_log_formulation) ) then
         call DiscretizationDuplicateVector(discretization,field%tran_xx, &
                                            field%tran_log_xx)
         call DiscretizationDuplicateVector(discretization,field%tran_xx_loc, &
@@ -542,6 +547,7 @@ subroutine RealizationPassPtrsToPatches(realization)
   realization%patch%field => realization%field
   realization%patch%datasets => realization%datasets
   realization%patch%reaction => realization%reaction
+  realization%patch%nw_trans => realization%nw_trans
   
 end subroutine RealizationPassPtrsToPatches
 
@@ -1066,13 +1072,14 @@ subroutine RealProcessTranConditions(realization)
   class(realization_subsurface_type) :: realization
   
   
-  PetscBool :: found
+  PetscBool :: found, coupling_needed
   type(option_type), pointer :: option
   type(tran_condition_type), pointer :: cur_condition
   type(tran_constraint_coupler_type), pointer :: cur_constraint_coupler
   type(tran_constraint_type), pointer :: cur_constraint, another_constraint
   
   option => realization%option
+  coupling_needed = PETSC_FALSE
   
   ! check for duplicate constraint names
   cur_constraint => realization%transport_constraints%first
@@ -1101,20 +1108,29 @@ subroutine RealProcessTranConditions(realization)
   cur_constraint => realization%transport_constraints%first
   do
     if (.not.associated(cur_constraint)) exit
-    call ReactionProcessConstraint(realization%reaction, &
-                                   cur_constraint%name, &
-                                   cur_constraint%aqueous_species, &
-                                   cur_constraint%free_ion_guess, &
-                                   cur_constraint%minerals, &
-                                   cur_constraint%surface_complexes, &
-                                   cur_constraint%colloids, &
-                                   cur_constraint%immobile_species, &
-                                   realization%option)
+    if (associated(realization%reaction)) &
+      call ReactionProcessConstraint(realization%reaction, &
+                                     cur_constraint%name, &
+                                     cur_constraint%aqueous_species, &
+                                     cur_constraint%free_ion_guess, &
+                                     cur_constraint%minerals, &
+                                     cur_constraint%surface_complexes, &
+                                     cur_constraint%colloids, &
+                                     cur_constraint%immobile_species, &
+                                     realization%option)
+#if 0
+!geh: breaks pflotran_rxn build
+    if (associated(realization%nw_trans)) &
+      call NWTProcessConstraint(realization%nw_trans,cur_constraint%name, &
+                                cur_constraint%nwt_species,realization%option)
+#endif
+   
     cur_constraint => cur_constraint%next
   enddo
   
   if (option%use_mc) then
-    call ReactionProcessConstraint(realization%reaction, &
+    if (associated(realization%reaction)) &
+      call ReactionProcessConstraint(realization%reaction, &
                      realization%sec_transport_constraint%name, &
                      realization%sec_transport_constraint%aqueous_species, &
                      realization%sec_transport_constraint%free_ion_guess, &
@@ -1123,18 +1139,28 @@ subroutine RealProcessTranConditions(realization)
                      realization%sec_transport_constraint%colloids, &
                      realization%sec_transport_constraint%immobile_species, &
                      realization%option)
+  ! jenn:todo Make NWT work with sec_transport_constraint?
   endif
   
   ! tie constraints to couplers, if not already associated
   cur_condition => realization%transport_conditions%first
   do
-
     if (.not.associated(cur_condition)) exit
     cur_constraint_coupler => cur_condition%constraint_coupler_list
     do
       if (.not.associated(cur_constraint_coupler)) exit
       ! if aqueous_species exists, it was coupled during the embedded read.
-      if (.not.associated(cur_constraint_coupler%aqueous_species)) then
+#if 0
+!geh: breaks pflotran_rxn build
+      if ( ((associated(realization%reaction)) .and. &
+           (.not.associated(cur_constraint_coupler%aqueous_species))) &
+           .or. &
+           ((associated(realization%nw_trans)) .and. &
+           (.not.associated(cur_constraint_coupler%nwt_species))) ) then
+#else
+      if (associated(realization%reaction) .and. &
+          .not.associated(cur_constraint_coupler%aqueous_species)) then
+#endif
         cur_constraint => realization%transport_constraints%first
         do
           if (.not.associated(cur_constraint)) exit
@@ -1147,7 +1173,17 @@ subroutine RealProcessTranConditions(realization)
           endif
           cur_constraint => cur_constraint%next
         enddo
-        if (.not.associated(cur_constraint_coupler%aqueous_species)) then
+#if 0
+!geh: breaks pflotran_rxn build
+        if ( ((associated(realization%reaction)) .and. &
+           (.not.associated(cur_constraint_coupler%aqueous_species))) &
+           .or. &
+           ((associated(realization%nw_trans)) .and. &
+           (.not.associated(cur_constraint_coupler%nwt_species))) ) then
+#else
+        if (associated(realization%reaction) .and. &
+            .not.associated(cur_constraint_coupler%aqueous_species)) then
+#endif
           option%io_buffer = 'Transport constraint "' // &
                    trim(cur_constraint_coupler%constraint_name) // &
                    '" not found in input file constraints.'
@@ -1202,7 +1238,7 @@ subroutine RealizationInitConstraints(realization)
   do
     if (.not.associated(cur_patch)) exit
     call PatchInitConstraints(cur_patch,realization%reaction, &
-                              realization%option)
+                              realization%nw_trans,realization%option)
     cur_patch => cur_patch%next
   enddo
  
@@ -1495,6 +1531,8 @@ subroutine RealizStoreRestartFlowParams(realization)
                                      field%perm0_zz,ONEDOF)
   endif   
   call MaterialGetAuxVarVecLoc(Material,field%work_loc,POROSITY, &
+                               POROSITY_CURRENT)
+  call MaterialSetAuxVarVecLoc(Material,field%work_loc,POROSITY, &
                                POROSITY_MINERAL)
   call DiscretizationLocalToGlobal(discretization,field%work_loc, &
                                    field%porosity0,ONEDOF)
@@ -2728,6 +2766,8 @@ subroutine RealizationStrip(this)
   call DatasetDestroy(this%uniform_velocity_dataset)
   
   call ReactionDestroy(this%reaction,this%option)
+  
+  call NWTransDestroy(this%nw_trans,this%option)
   
   call TranConstraintDestroy(this%sec_transport_constraint)
   

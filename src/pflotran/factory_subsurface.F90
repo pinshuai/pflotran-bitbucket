@@ -17,6 +17,7 @@ module Factory_Subsurface_module
             ! move to init_subsurface
             SubsurfaceReadFlowPM, &
             SubsurfaceReadRTPM, &
+            SubsurfaceReadNWTPM, &
             SubsurfaceReadWasteFormPM, &
             SubsurfaceReadUFDDecayPM, &
             SubsurfaceReadUFDBiospherePM
@@ -64,6 +65,7 @@ subroutine SubsurfaceInitializePostPetsc(simulation)
   use PM_Subsurface_Flow_class
   use PM_Base_class
   use PM_RT_class
+  use PM_NWT_class
   use PM_Waste_Form_class
   use PM_UFD_Decay_class
   use PM_UFD_Biosphere_class
@@ -87,6 +89,7 @@ subroutine SubsurfaceInitializePostPetsc(simulation)
   type(option_type), pointer :: option
   class(pm_subsurface_flow_type), pointer :: pm_flow
   class(pm_rt_type), pointer :: pm_rt
+  class(pm_nwt_type), pointer :: pm_nwt
   class(pm_waste_form_type), pointer :: pm_waste_form
   class(pm_ufd_decay_type), pointer :: pm_ufd_decay
   class(pm_ufd_biosphere_type), pointer :: pm_ufd_biosphere
@@ -98,7 +101,7 @@ subroutine SubsurfaceInitializePostPetsc(simulation)
   ! process command line arguments specific to subsurface
   call SubsurfInitCommandLineSettings(option)
 
-  call ExtractPMsFromPMList(simulation,pm_flow,pm_rt,pm_waste_form,&
+  call ExtractPMsFromPMList(simulation,pm_flow,pm_rt,pm_nwt,pm_waste_form,&
                             pm_ufd_decay,pm_ufd_biosphere,pm_auxiliary)
 
   call SubsurfaceSetFlowMode(pm_flow,option)
@@ -110,7 +113,7 @@ subroutine SubsurfaceInitializePostPetsc(simulation)
   simulation%waypoint_list_subsurface => WaypointListCreate()
 
   ! Setup linkages between PMCs
-  call SetupPMCLinkages(simulation,pm_flow,pm_rt,pm_waste_form,&
+  call SetupPMCLinkages(simulation,pm_flow,pm_rt,pm_nwt,pm_waste_form,&
     pm_ufd_decay,pm_ufd_biosphere,pm_auxiliary,realization)
   
   ! SubsurfaceInitSimulation() must be called after pmc linkages are set above.
@@ -123,7 +126,7 @@ end subroutine SubsurfaceInitializePostPetsc
 
 ! ************************************************************************** !
 
-subroutine ExtractPMsFromPMList(simulation,pm_flow,pm_rt,pm_waste_form,&
+subroutine ExtractPMsFromPMList(simulation,pm_flow,pm_rt,pm_nwt,pm_waste_form,&
                                 pm_ufd_decay,pm_ufd_biosphere,pm_auxiliary)
   !
   ! Extracts all possible PMs from the PM list
@@ -135,6 +138,7 @@ subroutine ExtractPMsFromPMList(simulation,pm_flow,pm_rt,pm_waste_form,&
   use PM_Subsurface_Flow_class
   use PM_Base_class
   use PM_RT_class
+  use PM_NWT_class
   use PM_Waste_Form_class
   use PM_UFD_Decay_class
   use PM_UFD_Biosphere_class
@@ -149,6 +153,7 @@ subroutine ExtractPMsFromPMList(simulation,pm_flow,pm_rt,pm_waste_form,&
   type(option_type), pointer :: option
   class(pm_subsurface_flow_type), pointer :: pm_flow
   class(pm_rt_type), pointer :: pm_rt
+  class(pm_nwt_type), pointer :: pm_nwt
   class(pm_waste_form_type), pointer :: pm_waste_form
   class(pm_ufd_decay_type), pointer :: pm_ufd_decay
   class(pm_ufd_biosphere_type), pointer :: pm_ufd_biosphere
@@ -159,6 +164,7 @@ subroutine ExtractPMsFromPMList(simulation,pm_flow,pm_rt,pm_waste_form,&
 
   nullify(pm_flow)
   nullify(pm_rt)
+  nullify(pm_nwt)
   nullify(pm_waste_form)
   nullify(pm_ufd_decay)
   nullify(pm_ufd_biosphere)
@@ -172,6 +178,8 @@ subroutine ExtractPMsFromPMList(simulation,pm_flow,pm_rt,pm_waste_form,&
         pm_flow => cur_pm
       class is(pm_rt_type)
         pm_rt => cur_pm
+      class is(pm_nwt_type)
+        pm_nwt => cur_pm
       class is(pm_waste_form_type)
         pm_waste_form => cur_pm
       class is(pm_ufd_decay_type)
@@ -199,7 +207,7 @@ end subroutine ExtractPMsFromPMList
 
 ! ************************************************************************** !
 
-subroutine SetupPMCLinkages(simulation,pm_flow,pm_rt,pm_waste_form,&
+subroutine SetupPMCLinkages(simulation,pm_flow,pm_rt,pm_nwt,pm_waste_form,&
                             pm_ufd_decay,pm_ufd_biosphere,pm_auxiliary, &
                             realization)
   !
@@ -212,6 +220,7 @@ subroutine SetupPMCLinkages(simulation,pm_flow,pm_rt,pm_waste_form,&
   use PM_Subsurface_Flow_class
   use PM_Base_class
   use PM_RT_class
+  use PM_NWT_class
   use PM_Waste_Form_class
   use PM_UFD_Decay_class
   use PM_UFD_Biosphere_class
@@ -225,6 +234,7 @@ subroutine SetupPMCLinkages(simulation,pm_flow,pm_rt,pm_waste_form,&
   class(simulation_subsurface_type) :: simulation
   class(pm_subsurface_flow_type), pointer :: pm_flow
   class(pm_rt_type), pointer :: pm_rt
+  class(pm_nwt_type), pointer :: pm_nwt
   class(pm_waste_form_type), pointer :: pm_waste_form
   class(pm_ufd_decay_type), pointer :: pm_ufd_decay
   class(pm_ufd_biosphere_type), pointer :: pm_ufd_biosphere
@@ -243,7 +253,11 @@ subroutine SetupPMCLinkages(simulation,pm_flow,pm_rt,pm_waste_form,&
   if (associated(pm_rt))   &
     call AddPMCSubsurfaceRT(simulation,pm_rt,'PMCSubsurfaceTransport', &
                             realization,option)
-
+                            
+  if (associated(pm_nwt))   &
+    call AddPMCSubsurfaceNWT(simulation,pm_nwt,'PMCSubsurfaceNWTransport', &
+                            realization,option)
+                            
   input => InputCreate(IN_UNIT,option%input_filename,option)
   call SubsurfaceReadRequiredCards(simulation,input)
   call SubsurfaceReadInput(simulation,input)
@@ -371,6 +385,63 @@ subroutine AddPMCSubsurfaceRT(simulation,pm_rt,pmc_name,realization,option)
   endif
 
 end subroutine AddPMCSubsurfaceRT
+
+! ************************************************************************** !
+
+subroutine AddPMCSubsurfaceNWT(simulation,pm_nwt,pmc_name,realization,option)
+
+  !
+  ! Adds a subsurface nuclear waste reactive transport PMC.
+  !
+  ! Author: Jenn Frederick
+  ! Date: 03/08/2019
+  !
+
+  use PMC_Base_class
+  use PM_NWT_class
+  use PMC_Subsurface_class
+  use Realization_Subsurface_class
+  use String_module
+  use Option_module
+  use Logging_module
+
+  implicit none
+
+  class(simulation_subsurface_type) :: simulation
+  class(pm_nwt_type), pointer :: pm_nwt
+  character(len=*) :: pmc_name
+  class(realization_subsurface_type), pointer :: realization
+  type(option_type), pointer :: option
+
+  class(pmc_subsurface_type), pointer :: pmc_subsurface
+  character(len=MAXSTRINGLENGTH) :: string
+  class(pmc_base_type), pointer :: pmc_dummy
+
+  nullify(pmc_dummy)
+
+  pmc_subsurface => PMCSubsurfaceCreate()
+  call pmc_subsurface%SetName(pmc_name)
+  call pmc_subsurface%SetOption(option)
+  call pmc_subsurface%SetCheckpointOption(simulation%checkpoint_option)
+  call pmc_subsurface%SetWaypointList(simulation%waypoint_list_subsurface)
+  pmc_subsurface%pm_list => pm_nwt
+  pmc_subsurface%pm_ptr%pm => pm_nwt
+  pmc_subsurface%realization => realization
+
+  ! set up logging stage
+  string = trim(pm_nwt%name)
+  call LoggingCreateStage(string,pmc_subsurface%stage)
+  simulation%nwt_process_model_coupler => pmc_subsurface
+
+  if (.not.associated(simulation%process_model_coupler_list)) then
+    simulation%process_model_coupler_list => pmc_subsurface
+  else
+    call PMCBaseSetChildPeerPtr(PMCCastToBase(pmc_subsurface),PM_CHILD, &
+                      PMCCastToBase(simulation%flow_process_model_coupler), &
+                      pmc_dummy,PM_INSERT)
+  endif
+
+end subroutine AddPMCSubsurfaceNWT
 
 ! ************************************************************************** !
 
@@ -706,6 +777,9 @@ subroutine SubsurfaceSetFlowMode(pm_flow,option)
   use PM_TOWG_class
   use PM_TOWG_Aux_module
   use PM_Richards_TS_class
+  use PM_TH_TS_class
+  use Hydrate_module
+  use General_Aux_module
 
   implicit none
 
@@ -748,23 +822,27 @@ subroutine SubsurfaceSetFlowMode(pm_flow,option)
       option%nflowdof = 2
       option%nflowspec = 2
     class is (pm_general_type)
-      option%iflowmode = G_MODE
-      option%nphase = 2
-      option%liquid_phase = 1  ! liquid_pressure
-      option%gas_phase = 2     ! gas_pressure
+      if (general_hydrate_flag) then
+        call HydrateSetFlowMode(option)
+      else
+        option%iflowmode = G_MODE
+        option%nphase = 2
+        option%liquid_phase = 1  ! liquid_pressure
+        option%gas_phase = 2     ! gas_pressure
 
-      option%air_pressure_id = 3
-      option%capillary_pressure_id = 4
-      option%vapor_pressure_id = 5
-      option%saturation_pressure_id = 6
+        option%air_pressure_id = 3
+        option%capillary_pressure_id = 4
+        option%vapor_pressure_id = 5
+        option%saturation_pressure_id = 6
 
-      option%water_id = 1
-      option%air_id = 2
-      option%energy_id = 3
+        option%water_id = 1
+        option%air_id = 2
+        option%energy_id = 3
 
-      option%nflowdof = 3
-      option%nflowspec = 2
-      option%use_isothermal = PETSC_FALSE
+        option%nflowdof = 3
+        option%nflowspec = 2
+        option%use_isothermal = PETSC_FALSE
+      endif
     class is (pm_toil_ims_type)
       option%iflowmode = TOIL_IMS_MODE
       option%nphase = 2
@@ -898,6 +976,15 @@ subroutine SubsurfaceSetFlowMode(pm_flow,option)
       option%nflowdof = 1
       option%nflowspec = 1
       option%use_isothermal = PETSC_TRUE
+    class is (pm_th_ts_type)
+      option%iflowmode = TH_TS_MODE
+      option%nphase = 1
+      option%liquid_phase = 1
+      option%gas_phase = 2
+      option%nflowdof = 2
+      option%nflowspec = 1
+      option%use_isothermal = PETSC_FALSE
+      option%flow%store_fluxes = PETSC_TRUE
     class default
       option%io_buffer = ''
       call printErrMsg(option)
@@ -931,6 +1018,7 @@ subroutine SubsurfaceReadFlowPM(input,option,pm)
   use PM_TOilIms_class
   use PM_TOWG_class
   use PM_Richards_TS_class
+  use PM_TH_TS_class
   use Init_Common_module
   use General_module
 
@@ -996,6 +1084,8 @@ subroutine SubsurfaceReadFlowPM(input,option,pm)
             pm => PMTOWGCreate(word,option)
           case ('RICHARDS_TS')
             pm => PMRichardsTSCreate()
+          case ('TH_TS')
+            pm => PMTHTSCreate()
           case default
             error_string = trim(error_string) // ',MODE'
             call InputKeywordUnrecognized(word,error_string,option)
@@ -1055,6 +1145,42 @@ subroutine SubsurfaceReadRTPM(input,option,pm)
   call pm%ReadSimulationBlock(input)
 
 end subroutine SubsurfaceReadRTPM
+
+! ************************************************************************** !
+
+subroutine SubsurfaceReadNWTPM(input,option,pm)
+  !
+  ! Author: Jenn Frederick
+  ! Date: 03/08/2019
+  !
+  use Input_Aux_module
+  use Option_module
+  use String_module
+
+  use PMC_Base_class
+  use PM_Base_class
+  use PM_NWT_class
+
+  use Init_Common_module
+
+  implicit none
+
+  type(input_type), pointer :: input
+  type(option_type), pointer :: option
+  class(pm_base_type), pointer :: pm
+
+  character(len=MAXWORDLENGTH) :: word
+  character(len=MAXSTRINGLENGTH) :: error_string
+
+  error_string = 'SIMULATION,PROCESS_MODELS,NUCLEAR_WASTE_TRANSPORT'
+
+  pm => PMNWTCreate()
+  pm%option => option
+  option%itranmode = NW_TRANSPORT
+
+  call pm%ReadSimulationBlock(input)
+
+end subroutine SubsurfaceReadNWTPM
 
 ! ************************************************************************** !
 
@@ -1293,6 +1419,12 @@ subroutine SubsurfaceInitSimulation(simulation)
         simulation%waypoint_list_subsurface%first
     endif
   endif
+  if (associated(simulation%nwt_process_model_coupler)) then
+    if (associated(simulation%nwt_process_model_coupler%timestepper)) then
+      simulation%nwt_process_model_coupler%timestepper%cur_waypoint => &
+        simulation%waypoint_list_subsurface%first
+    endif
+  endif
 
   !TODO(geh): refactor
   ! initialize global auxiliary variable object
@@ -1302,7 +1434,12 @@ subroutine SubsurfaceInitSimulation(simulation)
   ! set if no flow exists
   call InitSubsurfFlowSetupRealization(realization)
   if (option%ntrandof > 0) then
-    call InitSubsurfTranSetupRealization(realization)
+    if (associated(simulation%rt_process_model_coupler)) then
+      call InitSubsurfTranSetupRealization(realization)
+    endif
+    if (associated(simulation%nwt_process_model_coupler)) then
+      call InitNWTranSetupRealization(realization)
+    endif
   endif
   ! InitSubsurfaceSetupZeroArray must come after InitSubsurfaceXXXRealization
   call InitSubsurfaceSetupZeroArrays(realization)
@@ -1387,6 +1524,7 @@ recursive subroutine SetUpPMApproach(pmc,simulation)
   use PM_Richards_class
   use PM_TH_class
   use PM_RT_class
+  use PM_NWT_class
   use PM_Waste_Form_class
   use PM_WIPP_SrcSink_class
   use PM_UFD_Decay_class
@@ -1429,6 +1567,15 @@ recursive subroutine SetUpPMApproach(pmc,simulation)
           call printErrMsg(option)
         endif
         call cur_pm%SetRealization(realization)
+        
+      class is(pm_nwt_type)
+        if (.not.associated(realization%nw_trans)) then
+          option%io_buffer = 'NUCLEAR_WASTE_TRANSPORT is specified as a &
+            &process model in the SIMULATION block without the corresponding &
+            &SUBSURFACE_NUCLEAR_WASTE_TRANSPORT in the SUBSURFACE block.'
+          call printErrMsg(option)
+        endif
+        call cur_pm%SetRealization(realization)
 
       class is(pm_subsurface_flow_type)
         call cur_pm%SetRealization(realization)
@@ -1450,6 +1597,9 @@ recursive subroutine SetUpPMApproach(pmc,simulation)
         pmc%timestepper%dt = option%flow_dt
 
       class is(pm_rt_type)
+        pmc%timestepper%dt = option%tran_dt
+        
+      class is(pm_nwt_type)
         pmc%timestepper%dt = option%tran_dt
 
     end select
@@ -1524,6 +1674,7 @@ subroutine SubsurfaceSetupRealization(simulation)
     else
       ! turn off activity coefficients since the database has not been read
       realization%reaction%act_coef_update_frequency = ACT_COEF_FREQUENCY_OFF
+      ! jenn:todo Should I turn on print here too?
       allocate(realization%reaction%primary_species_print(option%ntrandof))
       realization%reaction%primary_species_print = PETSC_TRUE
     endif
@@ -1719,6 +1870,8 @@ subroutine SubsurfaceReadRequiredCards(simulation,input)
   use General_module
   use Reaction_module
   use Reaction_Aux_module
+  use NW_Transport_module
+  use NW_Transport_Aux_module
   use Init_Common_module
 
   use Grid_Grdecl_module, only : SetUGrdEclCmplLocation
@@ -1915,7 +2068,7 @@ subroutine SubsurfaceReadRequiredCards(simulation,input)
             call printErrMsg(option)
           endif
         endif
-
+        
 !....................
       case('CHEMISTRY')
         if (.not.associated(simulation%rt_process_model_coupler)) then
@@ -1926,7 +2079,20 @@ subroutine SubsurfaceReadRequiredCards(simulation,input)
         !geh: for some reason, we need this with CHEMISTRY read for
         !     multicontinuum
  !       option%use_mc = PETSC_TRUE
-        call ReactionInit(realization%reaction,input,option)
+        call ReactionInit(realization%reaction,input,option)  
+        
+!....................
+      case('SUBSURFACE_NUCLEAR_WASTE_TRANSPORT', &
+           'SUBSURFACE_NUCLEAR_WASTE_TRANSPO')  ! its so long, it gets cut off
+        if (.not.associated(simulation%nwt_process_model_coupler)) then
+          option%io_buffer = 'SUBSURFACE_NUCLEAR_WASTE_TRANSPORT card is &
+            &included, but no NUCLEAR_WASTE_TRANSPORT process model found &
+            &in the SIMULATION block.'
+          call printErrMsg(option)
+        endif     
+        realization%nw_trans => NWTRealizCreate()
+        call NWTRead(realization%nw_trans,input,option)
+        
     end select
   enddo
 
@@ -1971,6 +2137,8 @@ subroutine SubsurfaceReadInput(simulation,input)
   use Patch_module
   use Reaction_module
   use Reaction_Aux_module
+  use NW_Transport_module
+  use NW_Transport_Aux_module
   use Discretization_module
   use Input_Aux_module
   use String_module
@@ -2024,6 +2192,7 @@ subroutine SubsurfaceReadInput(simulation,input)
   PetscBool :: aveg_mass_flowrate
   PetscBool :: aveg_energy_flowrate
   PetscBool :: bool_flag,unsupported_output
+  PetscBool :: rt_on
 
   PetscInt :: flag1, flag2
 
@@ -2085,7 +2254,8 @@ subroutine SubsurfaceReadInput(simulation,input)
   field => realization%field
   reaction => realization%reaction
 
-  if (option%iflowmode == RICHARDS_TS_MODE) then
+  if ((option%iflowmode == RICHARDS_TS_MODE) .or. &
+      (option%iflowmode == TH_TS_MODE)) then
     flow_timestepper => TimestepperTSCreate()
   else
     flow_timestepper => TimestepperBECreate()
@@ -2097,6 +2267,9 @@ subroutine SubsurfaceReadInput(simulation,input)
 
   backslash = achar(92)  ! 92 = "\" Some compilers choke on \" thinking it
                           ! is a double quote as in c/c++
+                          
+  rt_on = PETSC_FALSE
+  if (associated(realization%reaction)) rt_on = PETSC_TRUE
 
   call InputRewind(input)
   string = 'SUBSURFACE'
@@ -2123,6 +2296,16 @@ subroutine SubsurfaceReadInput(simulation,input)
 !....................
       case ('CHEMISTRY')
         call ReactionReadPass2(reaction,input,option)
+        
+!....................
+      case('SUBSURFACE_NUCLEAR_WASTE_TRANSPORT', &
+           'SUBSURFACE_NUCLEAR_WASTE_TRANSPO') ! so long it gets cut off
+        if (.not.associated(simulation%nwt_process_model_coupler)) then
+          option%io_buffer = 'NUCLEAR_WASTE_TRANSPORT card is included, but no &
+            &NUCLEAR_WASTE_TRANSPORT process model found in SIMULATION block.'
+          call printErrMsg(option)
+        endif
+        call NWTReadPass2(realization%nw_trans,input,option)
 
 !....................
       case ('SPECIFIED_VELOCITY')
@@ -2300,9 +2483,10 @@ subroutine SubsurfaceReadInput(simulation,input)
 
 !....................
       case ('TRANSPORT_CONDITION')
-        if (.not.associated(reaction)) then
+        if ( (.not.associated(reaction)) .and. &
+             (.not.associated(realization%nw_trans)) ) then
           option%io_buffer = 'TRANSPORT_CONDITIONs not supported without &
-            &CHEMISTRY.'
+                             &CHEMISTRY or SUBSURFACE_NUCLEAR_WASTE_TRANSPORT.'
           call printErrMsg(option)
         endif
         tran_condition => TranConditionCreate(option)
@@ -2310,23 +2494,32 @@ subroutine SubsurfaceReadInput(simulation,input)
         call InputErrorMsg(input,option,'TRANSPORT_CONDITION','name')
         call printMsg(option,tran_condition%name)
         call TranConditionRead(tran_condition, &
-                               realization%transport_constraints, &
-                               reaction,input,option)
+                               realization%transport_constraints,reaction, &
+                               realization%nw_trans,rt_on,input,option)
         call TranConditionAddToList(tran_condition, &
                                     realization%transport_conditions)
         nullify(tran_condition)
 
 !....................
       case('CONSTRAINT')
-        if (.not.associated(reaction)) then
-          option%io_buffer = 'CONSTRAINTs not supported without CHEMISTRY.'
+        if ( (.not.associated(reaction)) .and. &
+             (.not.associated(realization%nw_trans)) ) then
+          option%io_buffer = 'CONSTRAINTs not supported without &
+                             &CHEMISTRY or SUBSURFACE_NUCLEAR_WASTE_TRANSPORT.'
           call printErrMsg(option)
         endif
         tran_constraint => TranConstraintCreate(option)
         call InputReadWord(input,option,tran_constraint%name,PETSC_TRUE)
         call InputErrorMsg(input,option,'constraint','name')
         call printMsg(option,tran_constraint%name)
-        call TranConstraintRead(tran_constraint,reaction,input,option)
+        if (associated(reaction)) &
+          call TranConstraintReadRT(tran_constraint,reaction,input,option)
+#if 0
+!geh: breaks pflotran_rxn build
+        if (associated(realization%nw_trans)) &
+          call TranConstraintReadNWT(tran_constraint,realization%nw_trans, &
+                                     input,option)
+#endif
         call TranConstraintAddToList(tran_constraint, &
                                      realization%transport_constraints)
         nullify(tran_constraint)
@@ -2521,7 +2714,7 @@ subroutine SubsurfaceReadInput(simulation,input)
         call InputReadWord(input,option,sec_tran_constraint%name,PETSC_TRUE)
         call InputErrorMsg(input,option,'secondary constraint','name')
         call printMsg(option,sec_tran_constraint%name)
-        call TranConstraintRead(sec_tran_constraint,reaction,input,option)
+        call TranConstraintReadRT(sec_tran_constraint,reaction,input,option)
         realization%sec_transport_constraint => sec_tran_constraint
         nullify(sec_tran_constraint)
 
@@ -3467,10 +3660,11 @@ subroutine SubsurfaceReadInput(simulation,input)
       case ('ONLY_VERTICAL_FLOW')
         option%flow%only_vertical_flow = PETSC_TRUE
         if (option%iflowmode /= TH_MODE .and. &
+            option%iflowmode /= TH_TS_MODE .and. &
             option%iflowmode /= RICHARDS_MODE .and. &
             option%iflowmode /= RICHARDS_TS_MODE) then
           option%io_buffer = 'ONLY_VERTICAL_FLOW implemented in RICHARDS, &
-                              &RICHARDS_TSand TH mode.'
+                              &RICHARDS_TS and TH, TH_TS modes.'
           call printErrMsg(option)
         endif
 
@@ -3481,15 +3675,17 @@ subroutine SubsurfaceReadInput(simulation,input)
         if (option%iflowmode /= RICHARDS_MODE .and. &
             option%iflowmode /= RICHARDS_TS_MODE) then
           option%io_buffer = 'QUASI_3D implemented in RICHARDS and &
-                              &RICHARDS_TS mode.'
+                              &RICHARDS_TS modes.'
           call printErrMsg(option)
         endif
 
 !....................
       case ('ONLY_ENERGY_EQ')
         option%flow%only_energy_eq = PETSC_TRUE
-        if (option%iflowmode /= TH_MODE) then
-          option%io_buffer = 'ONLY_ENERGY_EQ applicable only in TH mode.'
+        if (option%iflowmode /= TH_MODE .and. &
+            option%iflowmode /= TH_TS_MODE) then
+          option%io_buffer = 'ONLY_ENERGY_EQ applicable only in TH and &
+                              &TH_TS modes.'
           call printErrMsg(option)
         endif
 
@@ -3575,7 +3771,8 @@ subroutine SubsurfaceReadInput(simulation,input)
     deallocate(flow_timestepper)
     nullify(flow_timestepper)
   endif
-  if (associated(simulation%rt_process_model_coupler)) then
+  if (associated(simulation%rt_process_model_coupler) .or. &
+      associated(simulation%nwt_process_model_coupler)) then
     tran_timestepper%name = 'TRAN'
     if (option%steady_state) then
       ! transport is currently always BE
@@ -3586,7 +3783,12 @@ subroutine SubsurfaceReadInput(simulation,input)
       flow_timestepper => temp_timestepper
       nullify(temp_timestepper)
     endif
-    simulation%rt_process_model_coupler%timestepper => tran_timestepper
+    if (associated(simulation%rt_process_model_coupler)) then
+      simulation%rt_process_model_coupler%timestepper => tran_timestepper
+    endif
+    if (associated(simulation%nwt_process_model_coupler)) then
+      simulation%nwt_process_model_coupler%timestepper => tran_timestepper
+    endif
   else
     call tran_timestepper%Destroy()
     deallocate(tran_timestepper)

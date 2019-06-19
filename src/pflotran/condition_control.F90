@@ -17,6 +17,7 @@ module Condition_Control_module
 
   public :: CondControlAssignFlowInitCond, &
             CondControlAssignTranInitCond, &
+            CondControlAssignNWTranInitCond, &
             CondControlAssignFlowInitCondSurface, &
             CondControlScaleSourceSink
  
@@ -43,6 +44,7 @@ subroutine CondControlAssignFlowInitCond(realization)
   use Dataset_Base_class
   use Dataset_Gridded_HDF5_class
   use Dataset_Common_HDF5_class
+  use Dataset_module
   use Grid_module
   use Patch_module
   use EOS_Water_module
@@ -53,6 +55,7 @@ subroutine CondControlAssignFlowInitCond(realization)
   use WIPP_Flow_Aux_module, wf_dof_to_primary_variable => dof_to_primary_variable
   use PM_TOilIms_Aux_module 
   use PM_TOWG_Aux_module
+  use Hydrate_module
 
   implicit none
   
@@ -128,6 +131,12 @@ subroutine CondControlAssignFlowInitCond(realization)
             select type(dataset_ptr => dataset)
               class is(dataset_gridded_hdf5_type)
                 ! already mapped to flow_aux_real_var
+                if (.not.associated(initial_condition%flow_aux_real_var)) then
+                  option%io_buffer = 'A gridded dataset is being &
+                    &used with WIPP_FLOW, yet flow_aux_real_var is not &
+                    &allocated.'
+                  call PrintErrMsgToDev(option,'')
+                endif
               class is(dataset_common_hdf5_type)
                 use_dataset = PETSC_TRUE
                 dataset_flag(idof) = PETSC_TRUE
@@ -135,7 +144,6 @@ subroutine CondControlAssignFlowInitCond(realization)
                         initial_condition%flow_condition% &
                           sub_condition_ptr(idof)%ptr%dataset,idof, &
                         field%flow_xx,GLOBAL)
-              class default
             end select
           enddo            
 
@@ -180,7 +188,7 @@ subroutine CondControlAssignFlowInitCond(realization)
               ibegin = ibegin - 1
               if (.not.dataset_flag(WIPPFLO_LIQUID_PRESSURE_DOF)) then
                 xx_p(ibegin+WIPPFLO_LIQUID_PRESSURE_DOF) = &
-                  general%gas_pressure%dataset%rarray(1)
+                  general%liquid_pressure%dataset%rarray(1)
               endif
               if (.not.dataset_flag(WIPPFLO_GAS_SATURATION_DOF)) then
                 xx_p(ibegin+WIPPFLO_GAS_SATURATION_DOF) = &
@@ -287,6 +295,7 @@ subroutine CondControlAssignFlowInitCond(realization)
                   option%io_buffer = 'Gas saturation ' // trim(string)
                   call printErrMsg(option)
                 endif
+              case (HA_STATE) !MAN: testing HA_STATE (7)
             end select
             if (.not. &
                 (general%temperature%itype == DIRICHLET_BC .or. &
@@ -339,6 +348,13 @@ subroutine CondControlAssignFlowInitCond(realization)
                     general%mole_fraction%dataset%rarray(1)
                   xx_p(ibegin+GENERAL_ENERGY_DOF) = &
                     general%temperature%dataset%rarray(1)
+                case(HA_STATE) !MAN testing HA_STATE (7)
+                  xx_p(ibegin+GENERAL_GAS_PRESSURE_DOF) = &
+                    general%gas_pressure%dataset%rarray(1)
+                  xx_p(ibegin+GENERAL_GAS_SATURATION_DOF) = &
+                    general%hydrate_saturation%dataset%rarray(1)
+                  xx_p(ibegin+GENERAL_ENERGY_DOF) = &
+                    general%temperature%dataset%rarray(1)
               end select
               iphase_loc_p(ghosted_id) = initial_condition%flow_condition%iphase
               cur_patch%aux%Global%auxvars(ghosted_id)%istate = &
@@ -358,13 +374,30 @@ subroutine CondControlAssignFlowInitCond(realization)
               offset = (local_id-1)*option%nflowdof
               istate = initial_condition%flow_aux_int_var(1,iconn)
               do idof = 1, option%nflowdof
-                xx_p(offset+idof) = &
-                  initial_condition%flow_aux_real_var( &
-                    initial_condition%flow_aux_mapping( &
-                      gen_dof_to_primary_variable(idof,istate)),iconn)
+                if (general_hydrate_flag .and. istate > 3) then
+                  xx_p(offset+idof) = &
+                    initial_condition%flow_aux_real_var( &
+                      initial_condition%flow_aux_mapping( &
+                        gen_dof_to_primary_variable(idof,TWO_PHASE_STATE)), &
+                        iconn)
+
+                else
+                  xx_p(offset+idof) = &
+                    initial_condition%flow_aux_real_var( &
+                      initial_condition%flow_aux_mapping( &
+                        gen_dof_to_primary_variable(idof,istate)),iconn)
+                endif
               enddo
-              iphase_loc_p(ghosted_id) = istate
-              cur_patch%aux%Global%auxvars(ghosted_id)%istate = istate
+              if (general_hydrate_flag .and. istate > 3) then
+                iphase_loc_p(ghosted_id) = TWO_PHASE_STATE
+                cur_patch%aux%Global%auxvars(ghosted_id)% &
+                        istate = TWO_PHASE_STATE
+                cur_patch%aux%Global%auxvars(ghosted_id)% &
+                        hstate = istate
+              else
+                iphase_loc_p(ghosted_id) = istate
+                cur_patch%aux%Global%auxvars(ghosted_id)%istate = istate
+              endif
             enddo
           endif
           initial_condition => initial_condition%next
@@ -710,6 +743,12 @@ subroutine CondControlAssignFlowInitCond(realization)
             select type(dataset_ptr => dataset)
               class is(dataset_gridded_hdf5_type)
                 ! already mapped to flow_aux_real_var
+                if (.not.associated(initial_condition%flow_aux_real_var)) then
+                  option%io_buffer = 'A gridded dataset is being &
+                    &used with ' // trim(option%flowmode) // &
+                    ', yet flow_aux_real_var is not allocated.'
+                  call PrintErrMsgToDev(option,'')
+                endif
               class is(dataset_common_hdf5_type)
                 use_dataset = PETSC_TRUE
                 dataset_flag(idof) = PETSC_TRUE
@@ -717,7 +756,6 @@ subroutine CondControlAssignFlowInitCond(realization)
                         initial_condition%flow_condition% &
                           sub_condition_ptr(idof)%ptr%dataset,idof, &
                         field%flow_xx,GLOBAL)
-              class default
             end select
           enddo            
           if (.not.associated(initial_condition%flow_aux_real_var) .and. &
@@ -1317,6 +1355,184 @@ end subroutine CondControlAssignTranInitCond
 
 ! ************************************************************************** !
 
+subroutine CondControlAssignNWTranInitCond(realization)
+  ! 
+  ! Assigns transport initial conditions to model, and equilibrates the 
+  ! initial conditions according to the constraint types.
+  ! 
+  ! Author: Jenn Frederick
+  ! Date: 04/02/2019
+  ! 
+#include "petsc/finclude/petscvec.h"
+  use petscvec
+
+  use Realization_Subsurface_class
+  use Discretization_module
+  use Option_module
+  use Field_module
+  use Coupler_module
+  use Condition_module
+  use Transport_Constraint_module
+  use Grid_module
+  use Patch_module
+  use NW_Transport_module
+  use NW_Transport_Aux_module
+  use Material_Aux_class
+  use HDF5_module
+  
+  implicit none
+  
+  class(realization_subsurface_type) :: realization
+  
+  PetscInt :: icell, idof
+  PetscInt :: local_id, ghosted_id, iend, ibegin
+  PetscReal, pointer :: xx_p(:)
+  Vec :: vec1_loc
+  Vec :: vec2_loc
+  PetscErrorCode :: ierr
+  
+  type(option_type), pointer :: option
+  type(field_type), pointer :: field  
+  type(grid_type), pointer :: grid
+  type(discretization_type), pointer :: discretization
+  type(coupler_type), pointer :: initial_condition
+  type(patch_type), pointer :: cur_patch
+  type(nw_trans_realization_type), pointer :: nw_trans
+  class(material_auxvar_type), pointer :: material_auxvars(:)
+  type(tran_constraint_coupler_type), pointer :: constraint_coupler
+
+  PetscInt :: iphase
+  PetscInt :: offset
+  character(len=MAXSTRINGLENGTH) :: string, string2
+  PetscReal :: tempreal
+  
+  option => realization%option
+  discretization => realization%discretization
+  field => realization%field
+  nw_trans => realization%nw_trans
+  
+  iphase = 1
+  vec1_loc = PETSC_NULL_VEC
+  vec2_loc = PETSC_NULL_VEC
+  
+  ! jenn:todo Do not allow MPH_MODE or FLASH2_MODE with NW Transport. 
+  
+  cur_patch => realization%patch_list%first
+  do
+    if (.not.associated(cur_patch)) exit
+
+    grid => cur_patch%grid
+    material_auxvars => cur_patch%aux%Material%auxvars
+
+    call VecGetArrayF90(field%tran_xx,xx_p,ierr);CHKERRQ(ierr)   
+    xx_p = UNINITIALIZED_DOUBLE
+      
+    initial_condition => cur_patch%initial_condition_list%first
+    do
+      if (.not.associated(initial_condition)) exit
+        
+      constraint_coupler => &
+        initial_condition%tran_condition%cur_constraint_coupler
+        
+      do icell=1,initial_condition%region%num_cells
+      
+        local_id = initial_condition%region%cell_ids(icell)
+        ghosted_id = grid%nL2G(local_id)
+
+#if 0
+!geh: breaks pflotran_rxn build
+        call NWTEquilibrateConstraint(nw_trans,constraint_coupler%nwt_species, &
+                                      constraint_coupler%nwt_auxvar, &
+                                      constraint_coupler%global_auxvar, &
+                                      material_auxvars(ghosted_id), &
+                                      option)
+#endif
+        
+      
+        iend = local_id*option%ntrandof
+        ibegin = iend-option%ntrandof+1
+        if (cur_patch%imat(ghosted_id) <= 0) then
+          xx_p(ibegin:iend) = 1.d-200
+          cycle
+        endif
+        ! ibegin is the local non-ghosted offset: (local_id-1)*option%ntrandof+1
+        offset = ibegin - 1
+        
+        ! species concentrations
+        do idof = 1, nw_trans%params%nspecies 
+#if 0
+!geh: breaks pflotran_rxn build
+          xx_p(offset+idof) = &
+                           constraint_coupler%nwt_auxvar%total_bulk_conc(idof)
+#endif
+        enddo
+
+      enddo ! icell=1,initial_condition%region%num_cells
+      initial_condition => initial_condition%next
+    enddo
+      
+    call VecRestoreArrayF90(field%tran_xx,xx_p, ierr);CHKERRQ(ierr)
+
+    cur_patch => cur_patch%next
+  enddo
+  
+  ! check to ensure that minimum concentration is not less than or equal
+  ! to zero
+  call VecMin(field%tran_xx,PETSC_NULL_INTEGER,tempreal,ierr);CHKERRQ(ierr)
+  if (tempreal <= 0.d0) then
+    option%io_buffer = 'ERROR: Zero concentrations found in initial &
+                       &transport solution.'
+    call printMsg(option)
+    ! now figure out which species have zero concentrations
+    do idof = 1, option%ntrandof
+      call VecStrideMin(field%tran_xx,idof-1,offset,tempreal, &
+                        ierr);CHKERRQ(ierr)
+      if (tempreal <= 0.d0) then
+        write(string,*) tempreal
+        string2 = '  Species "' // trim(nw_trans%species_names(idof))
+        string2 = trim(string2) // '" has zero concentration (' // &
+                  trim(adjustl(string)) // ').'
+        call printMsg(option,string2)
+      endif
+    enddo
+    option%io_buffer = ''
+    call printMsg(option)
+    option%io_buffer = '*** Begin Note'
+    call printMsg(option)
+    option%io_buffer = 'If concentrations = -999., they have not ' // &
+              'been initialized properly.'
+    call printMsg(option)
+    option%io_buffer = '*** End Note'
+    call printMsg(option)
+    option%io_buffer = 'Species concentations must be positive.  Try ' // &
+      'using a small value such as 1.e-20 or 1.e-40 instead of zero.'
+    call printErrMsg(option)
+  endif
+  
+  ! update dependent vectors
+  call DiscretizationGlobalToLocal(discretization,field%tran_xx, &
+                                   field%tran_xx_loc,NTRANDOF)  
+  call VecCopy(field%tran_xx, field%tran_yy, ierr);CHKERRQ(ierr)
+
+  ! override initial conditions if they are to be read from a file
+  if (len_trim(option%initialize_transport_filename) > 1) then
+    call CondControlReadTransportIC(realization, &
+                                    option%initialize_transport_filename)
+  endif
+  
+  call NWTUpdateAuxVars(realization,PETSC_TRUE,PETSC_FALSE)
+
+  if (vec1_loc /= PETSC_NULL_VEC) then
+    call VecDestroy(vec1_loc,ierr);CHKERRQ(ierr)
+  endif
+  if (vec2_loc /= PETSC_NULL_VEC) then
+    call VecDestroy(vec2_loc,ierr);CHKERRQ(ierr)
+  endif
+
+end subroutine CondControlAssignNWTranInitCond
+
+! ************************************************************************** !
+
 subroutine ConditionControlMapDatasetToVec(realization,dataset,idof, &
                                            mdof_vec,vec_type)
   ! 
@@ -1503,7 +1719,7 @@ subroutine CondControlScaleSourceSink(realization)
                             grid%structured_grid%dy(neighbor_ghosted_id)
               enddo
               vec_ptr(local_id) = vec_ptr(local_id) + sum
-          case(TH_MODE)
+          case(TH_MODE,TH_TS_MODE)
           case(MPH_MODE)
           case(IMS_MODE)
           case(MIS_MODE)
@@ -1524,7 +1740,7 @@ subroutine CondControlScaleSourceSink(realization)
           case(RICHARDS_MODE,RICHARDS_TS_MODE,G_MODE,WF_MODE)
             cur_source_sink%flow_aux_real_var(ONE_INTEGER,iconn) = &
               vec_ptr(local_id)
-          case(TH_MODE)
+          case(TH_MODE,TH_TS_MODE)
           case(MPH_MODE)
           case(IMS_MODE)
           case(MIS_MODE)
@@ -1603,7 +1819,10 @@ subroutine CondControlReadTransportIC(realization,filename)
     do idof = 1, option%ntrandof ! primary aqueous concentrations
       offset = idof
       group_name = ''
-      dataset_name = reaction%primary_species_names(idof)
+      if (associated(reaction)) &
+        dataset_name = reaction%primary_species_names(idof)
+      if (associated(realization%nw_trans)) &
+        dataset_name = realization%nw_trans%species_names(idof)
       call HDF5ReadCellIndexedRealArray(realization,field%work, &
                                         filename,group_name, &
                                         dataset_name,option%id>0)
@@ -1683,7 +1902,8 @@ subroutine CondControlAssignFlowInitCondSurface(surf_realization)
   surf_field => surf_realization%surf_field
   patch => surf_realization%patch
 
-  if (option%iflowmode == TH_MODE) then
+  if ((option%iflowmode == TH_MODE) .or. &
+      (option%iflowmode == TH_MODE)) then
     surf_th_auxvars => patch%surf_aux%SurfaceTH%auxvars
     surf_global_auxvars => patch%surf_aux%SurfaceGlobal%auxvars
   endif
@@ -1696,7 +1916,7 @@ subroutine CondControlAssignFlowInitCondSurface(surf_realization)
 
     select case(option%iflowmode)
       
-      case (RICHARDS_MODE,RICHARDS_TS_MODE,TH_MODE)
+      case (RICHARDS_MODE,RICHARDS_TS_MODE,TH_MODE,TH_TS_MODE)
         ! assign initial conditions values to domain
         call VecGetArrayF90(surf_field%flow_xx,xx_p, ierr);CHKERRQ(ierr)
     

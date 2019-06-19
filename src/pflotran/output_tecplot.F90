@@ -328,8 +328,6 @@ subroutine OutputTecplotBlock(realization_base)
       realization_base%discretization%itype == STRUCTURED_GRID) then
     select case(option%iflowmode)
       case(MPH_MODE,IMS_MODE,FLASH2_MODE,G_MODE,WF_MODE)
-        call OutputFluxVelocitiesTecplotBlk(realization_base,GAS_PHASE, &
-                                            X_DIRECTION,PETSC_FALSE)
         include_gas_phase = PETSC_TRUE
       case(NULL_MODE)
         if (option%transport%nphase > 1) include_gas_phase = PETSC_TRUE
@@ -1007,6 +1005,12 @@ subroutine OutputTecplotPoint(realization_base)
   
   if (output_option%print_tecplot_vel_cent) then
     call OutputVelocitiesTecplotPoint(realization_base)
+  endif
+
+  if (output_option%print_tecplot_vel_face) then
+    option%io_buffer = 'OUTPUT of VELOCITY_AT_FACE only supported for &
+                       &FORMAT TECPLOT BLOCK.'
+    call PrintErrMsg(option)
   endif
   
 end subroutine OutputTecplotPoint
@@ -2333,6 +2337,7 @@ subroutine OutputSecondaryContinuumTecplot(realization_base)
       reaction => realization_base%reaction
     endif
     if (option%iflowmode == TH_MODE &
+        .or. option%iflowmode == TH_TS_MODE &
         .or. option%iflowmode == MPH_MODE) then
       sec_heat_vars => patch%aux%SC_heat%sec_heat_vars
     endif
@@ -2625,7 +2630,7 @@ subroutine WriteTecplotHeaderSec(fid,realization_base,cell_string, &
   ! add secondary temperature to header
   if (print_secondary_data(1)) then
     select case (option%iflowmode) 
-      case (TH_MODE, MPH_MODE)
+      case (TH_MODE,TH_TS_MODE,MPH_MODE)
         string = 'T'
         call OutputWriteToHeader(fid,string,'C',cell_string,icolumn)
       case default
